@@ -13,7 +13,7 @@
 
 #define INIT_ALLSOUNDS	1
 
-static soundTable[MAX_AUDIOFILES] = {
+static int soundTable[MAX_AUDIOFILES] = {
 	5039, 5040, 5042, 5043, 5044, 5045, 5046, 5047, 5048, 5049, 5050,
 	5051, 5052, 5053, 5054, 5055, 5057, 5058, 5059, 5060, 5061, 5062,
 	5063, 5064, 5065, 5066, 5067, 5068, 5069, 5070, 5071, 5072, 5073,
@@ -392,7 +392,7 @@ void Sound_freeSounds(Sound_t* sound)
 	} while (++chan < (MAX_SOUNDCHANNELS + 1));
 }
 
-int Sound_getFromResourceID(resourceID)
+int Sound_getFromResourceID(int resourceID)
 {
 	for (int i = 0; i < MAX_AUDIOFILES; i++) {
 		if (soundTable[i] == resourceID) {

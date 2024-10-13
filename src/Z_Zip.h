@@ -17,7 +17,7 @@ typedef struct zip_entry_s
 
 typedef struct zip_file_s
 {
-	SDL_RWops* file;
+	FILE* file;
 	int entry_count;
 	zip_entry_t* entry;
 	int page_count;

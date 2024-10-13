@@ -30,90 +30,119 @@ static void zip_free(void* ctx, void* ptr)
 	SDL_free(ptr);
 }
 
+static int16_t _ReadShort(FILE* fp)
+{
+	int16_t sData = 0;
+
+	if (fp) {
+		fread(&sData, sizeof(int16_t), 1, fp);
+	}
+
+	return sData;
+}
+
+static int32_t _ReadInt(FILE* fp)
+{
+	int32_t iData = 0;
+
+	if (fp) {
+		fread(&iData, sizeof(int32_t), 1, fp);
+	}
+
+	return iData;
+}
+
 void findAndReadZipDir(zip_file_t* zipFile, int startoffset)
 {
 	int sig, offset, count;
 	int namesize, metasize, commentsize;
 	int i;
 
-	SDL_RWseek(zipFile->file, startoffset, SEEK_SET);
+	fseek(zipFile->file, startoffset, SEEK_SET);
 
-	sig = File_readLong(zipFile->file);
+	sig = _ReadInt(zipFile->file);
 	if (sig != ZIP_END_OF_CENTRAL_DIRECTORY_SIG) {
 		DoomRPG_Error("wrong zip end of central directory signature (0x%x)", sig);
 	}
 
-	File_readShort(zipFile->file); // this disk
-	File_readShort(zipFile->file); // start disk
-	File_readShort(zipFile->file); // entries in this disk
-	count = File_readShort(zipFile->file); // entries in central directory disk
-	File_readLong(zipFile->file); // size of central directory
-	offset = File_readLong(zipFile->file); // offset to central directory
+	printf("%d\n", _ReadShort(zipFile->file)); // this disk
+	printf("%d\n", _ReadShort(zipFile->file)); // start disk
+	printf("%d\n", _ReadShort(zipFile->file)); // entries in this disk
+	printf("%d\n", count = _ReadShort(zipFile->file)); // entries in central directory disk
+	printf("%d\n", _ReadInt(zipFile->file)); // size of central directory
+	printf("%d\n", offset = _ReadInt(zipFile->file)); // offset to central directory
+	
+	if(count <= 0)
+	{
+		DoomRPG_Error("No entries in central directory disk.");
+	}
 
-	zipFile->entry = SDL_calloc(count, sizeof(zip_entry_t));
+	zipFile->entry = (zip_entry_t*)calloc(count, sizeof(zip_entry_t));
 	zipFile->entry_count = count;
 
-	SDL_RWseek(zipFile->file, offset, SEEK_SET);
+	fseek(zipFile->file, offset, SEEK_SET);
 
 	for (i = 0; i < count; i++)
 	{
 		zip_entry_t* entry = zipFile->entry + i;
 
-		sig = File_readLong(zipFile->file);
+		sig = _ReadInt(zipFile->file);
 		if (sig != ZIP_CENTRAL_DIRECTORY_SIG) {
 			DoomRPG_Error("wrong zip central directory signature (0x%x)", sig);
 		}
 
-		File_readShort(zipFile->file); // version made by
-		File_readShort(zipFile->file); // version to extract
-		File_readShort(zipFile->file); // general
-		File_readShort(zipFile->file); // method
-		File_readShort(zipFile->file); // last mod file time
-		File_readShort(zipFile->file); // last mod file date
-		File_readLong(zipFile->file); // crc-32
-		entry->csize = File_readLong(zipFile->file); // csize
-		entry->usize = File_readLong(zipFile->file); // usize
-		namesize = File_readShort(zipFile->file);
-		metasize = File_readShort(zipFile->file);
-		commentsize = File_readShort(zipFile->file);
-		File_readShort(zipFile->file); // disk number start
-		File_readShort(zipFile->file); // int file atts
-		File_readLong(zipFile->file); // ext file atts
-		entry->offset = File_readLong(zipFile->file);
+		_ReadShort(zipFile->file); // version made by
+		_ReadShort(zipFile->file); // version to extract
+		_ReadShort(zipFile->file); // general
+		_ReadShort(zipFile->file); // method
+		_ReadShort(zipFile->file); // last mod file time
+		_ReadShort(zipFile->file); // last mod file date
+		_ReadInt(zipFile->file); // crc-32
+		entry->csize = _ReadInt(zipFile->file); // csize
+		entry->usize = _ReadInt(zipFile->file); // usize
+		namesize = _ReadShort(zipFile->file); // namesize
+		metasize = _ReadShort(zipFile->file); // metasize
+		commentsize = _ReadShort(zipFile->file); // commentsize
+		_ReadShort(zipFile->file); // disk number start
+		_ReadShort(zipFile->file); // int file atts
+		_ReadInt(zipFile->file); // ext file atts
+		entry->offset = _ReadInt(zipFile->file); // offset
 
-		entry->name = SDL_malloc(namesize + 1);
-		SDL_RWread(zipFile->file, (unsigned char*)entry->name, sizeof(byte), namesize);
+		entry->name = (char*)malloc(namesize + 1);
+		fread(entry->name, sizeof(char), namesize, zipFile->file);
 		entry->name[namesize] = 0;
 
-		SDL_RWseek(zipFile->file, metasize, SEEK_CUR);
-		SDL_RWseek(zipFile->file, commentsize, SEEK_CUR);
+		fseek(zipFile->file, metasize, SEEK_CUR);
+		fseek(zipFile->file, commentsize, SEEK_CUR);
 	}
 }
 
 void openZipFile(const char* name, zip_file_t* zipFile)
 {
-	byte buf[512];
+	uint8_t buf[512];
 	int filesize, back, maxback;
 	int i, n;
 
-	zipFile->file = SDL_RWFromFile(name, "r");
+	zipFile->file = fopen(name, "rb");
 	if (zipFile->file == NULL) {
 		DoomRPG_Error("openZipFile: cannot open file %s\n", name);
 	}
 
-	filesize = (int)SDL_RWsize(zipFile->file);
+	fseek(zipFile->file, 0, SEEK_END);
+	filesize = (int)ftell(zipFile->file);
+	fseek(zipFile->file, 0, SEEK_SET);
 
 	maxback = MIN(filesize, 0xFFFF + sizeof(buf));
 	back = MIN(maxback, sizeof(buf));
 
 	while (back < maxback)
 	{
-		SDL_RWseek(zipFile->file, filesize - back, SEEK_SET);
+		fseek(zipFile->file, filesize - back, SEEK_SET);
 		n = sizeof(buf);
-		SDL_RWread(zipFile->file, buf, sizeof(byte), sizeof(buf));
+		fread(buf, sizeof(uint8_t), n, zipFile->file);
 		for (i = n - 4; i > 0; i--)
 		{
-			if (!SDL_memcmp(buf + i, "PK\5\6", 4)) {
+			if (!memcmp(buf + i, "PK\5\6", 4)) {
 				findAndReadZipDir(zipFile, filesize - back + i);
 				return;
 			}
@@ -126,11 +155,16 @@ void openZipFile(const char* name, zip_file_t* zipFile)
 
 void closeZipFile(zip_file_t* zipFile)
 {
-	if (zipFile->entry) {
-		SDL_free(zipFile->entry);
-	}
-	if (zipFile->file) {
-		SDL_RWclose(zipFile->file);
+	if (zipFile) {
+		if (zipFile->entry) {
+			free(zipFile->entry);
+			zipFile->entry = NULL;
+		}
+
+		if (zipFile->file) {
+			fclose(zipFile->file);
+			zipFile->file = NULL;
+		}
 	}
 }
 
@@ -138,13 +172,12 @@ unsigned char* readZipFileEntry(const char* name, zip_file_t* zipFile, int* size
 {
 	zip_entry_t* entry = NULL;
 	int i, sig, general, method, namelength, extralength;
-	byte* cdata;
+	uint8_t* cdata;
 	int code;
 
 	for (i = 0; i < zipFile->entry_count; i++)
 	{
 		zip_entry_t* entryTmp = zipFile->entry + i;
-
 		if (!SDL_strcasecmp(name, entryTmp->name)) {
 			entry = zipFile->entry + i;
 			break;
@@ -155,32 +188,32 @@ unsigned char* readZipFileEntry(const char* name, zip_file_t* zipFile, int* size
 		DoomRPG_Error("did not find the %s file in the zip file", name);
 	}
 
-	SDL_RWseek(zipFile->file, entry->offset, SEEK_SET);
+	fseek(zipFile->file, entry->offset, SEEK_SET);
 
-	sig = File_readLong(zipFile->file);
+	sig = _ReadInt(zipFile->file);
 	if (sig != ZIP_LOCAL_FILE_SIG) {
 		DoomRPG_Error("wrong zip local file signature (0x%x)", sig);
 	}
 
-	File_readShort(zipFile->file); // version
-	general = File_readShort(zipFile->file); // general
+	_ReadShort(zipFile->file); // version
+	general = _ReadShort(zipFile->file); // general
 	if (general & ZIP_ENCRYPTED_FLAG) {
 		DoomRPG_Error("zipfile content is encrypted");
 	}
 
-	method = File_readShort(zipFile->file);
-	File_readShort(zipFile->file); // file time
-	File_readShort(zipFile->file); // file date
-	File_readLong(zipFile->file); // crc-32
-	File_readLong(zipFile->file); // csize
-	File_readLong(zipFile->file); // usize
-	namelength = File_readShort(zipFile->file);
-	extralength = File_readShort(zipFile->file);
+	method = _ReadShort(zipFile->file); // method
+	_ReadShort(zipFile->file); // file time
+	_ReadShort(zipFile->file); // file date
+	_ReadInt(zipFile->file); // crc-32
+	_ReadInt(zipFile->file); // csize
+	_ReadInt(zipFile->file); // usize
+	namelength = _ReadShort(zipFile->file); // namelength
+	extralength = _ReadShort(zipFile->file); // extralength
 
-	SDL_RWseek(zipFile->file, namelength + extralength, SEEK_CUR);
+	fseek(zipFile->file, namelength + extralength, SEEK_CUR);
 
-	cdata = SDL_malloc(entry->csize);
-	SDL_RWread(zipFile->file, cdata, sizeof(byte), entry->csize);
+	cdata = (uint8_t*) malloc(entry->csize);
+	fread(cdata, sizeof(uint8_t), entry->csize, zipFile->file);
 
 	if (method == 0)
 	{
@@ -189,10 +222,10 @@ unsigned char* readZipFileEntry(const char* name, zip_file_t* zipFile, int* size
 	}
 	else if (method == 8)
 	{
-		byte* udata = SDL_malloc(entry->usize);
+		uint8_t* udata = (uint8_t*) malloc(entry->usize);
 		z_stream stream;
 
-		SDL_memset(&stream, 0, sizeof stream);
+		memset(&stream, 0, sizeof stream);
 		stream.zalloc = zip_alloc;
 		stream.zfree = zip_free;
 		stream.opaque = Z_NULL;
@@ -218,7 +251,7 @@ unsigned char* readZipFileEntry(const char* name, zip_file_t* zipFile, int* size
 			DoomRPG_Error("zlib inflateEnd error: %s", stream.msg);
 		}
 
-		SDL_free(cdata);
+		free(cdata);
 
 		*sizep = entry->usize;
 		return udata;
